@@ -1,0 +1,263 @@
+// Prisma schema para EmpleoRapido
+// Plataforma de busqueda de empleo para reparaciones del hogar.
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  runtime                = "nodejs"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  WORKER
+  HOMEOWNER
+}
+
+enum IdVerificationStatus {
+  NONE
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum JobStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum WorkCategory {
+  PLOMERIA
+  ELECTRICIDAD
+  CARPINTERIA
+  PINTURA
+  ALBANILERIA
+  CERRAJERIA
+  GAS
+  ELECTRODOMESTICOS
+  JARDINERIA
+  LIMPIEZA
+  AIRE_ACONDICIONADO
+  TECHOS
+  MUDANZAS
+  OTROS
+}
+
+enum Currency {
+  BOB
+  USD
+  EUR
+  ARS
+  BRL
+  PEN
+  CLP
+  COP
+}
+
+// ---------------------------------------------------------------------------
+// Usuarios y autenticacion
+// ---------------------------------------------------------------------------
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  firstName String
+  lastName  String
+  phone     String?
+  role      Role
+  avatarUrl String?
+
+  // Ubicacion (obtenida desde el navegador via Geolocation API)
+  city      String?
+  latitude  Float?
+  longitude Float?
+
+  // Verificacion de identidad (DNI + selfie). Las imagenes se guardan en
+  // un directorio privado (no servido por /uploads) y solo el dueno accede.
+  dniNumber            String?              @unique
+  dniFrontPath         String?
+  dniBackPath          String?
+  selfiePath           String?
+  idVerificationStatus IdVerificationStatus @default(NONE)
+  idVerifiedAt         DateTime?
+  idVerificationNote   String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workerProfile   WorkerProfile?
+  jobsPosted      Job[]           @relation("HomeownerJobs")
+  assignedJobs    Job[]           @relation("WorkerJobs")
+  applications    Application[]
+  reviewsWritten  Review[]        @relation("ReviewAuthor")
+  reviewsReceived Review[]        @relation("ReviewTarget")
+  refreshTokens   RefreshToken[]
+
+  @@index([role])
+  @@index([city])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Perfil / CV del trabajador
+// ---------------------------------------------------------------------------
+
+model WorkerProfile {
+  id              String         @id @default(cuid())
+  userId          String         @unique
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline        String?
+  bio             String?
+  categories      WorkCategory[]
+  skills          String[]
+  experienceYears Int?
+  hourlyRate      Decimal?       @db.Decimal(10, 2)
+  currency        Currency       @default(PEN)
+  isAvailable     Boolean        @default(true)
+
+  // Reputacion desnormalizada (se actualiza al completar trabajos)
+  averageRating Float @default(0)
+  completedJobs Int   @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isAvailable])
+}
+
+// ---------------------------------------------------------------------------
+// Publicaciones de trabajo
+// ---------------------------------------------------------------------------
+
+model Job {
+  id          String   @id @default(cuid())
+  homeownerId String
+  homeowner   User     @relation("HomeownerJobs", fields: [homeownerId], references: [id], onDelete: Cascade)
+
+  workerId String?
+  worker   User?   @relation("WorkerJobs", fields: [workerId], references: [id], onDelete: SetNull)
+
+  title       String
+  description String
+  category    WorkCategory
+  city        String
+  address     String?
+  latitude    Float
+  longitude   Float
+  budget      Decimal?    @db.Decimal(10, 2)
+  currency    Currency    @default(PEN)
+
+  status      JobStatus @default(OPEN)
+  selectedAt  DateTime?
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  photos       JobPhoto[]
+  applications Application[]
+  review       Review?
+
+  @@index([status, city])
+  @@index([homeownerId])
+  @@index([workerId])
+}
+
+// Fotos del estado inicial del trabajo (maximo 3, convertidas a webp)
+model JobPhoto {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  url       String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([jobId])
+}
+
+// ---------------------------------------------------------------------------
+// Postulaciones
+// ---------------------------------------------------------------------------
+
+model Application {
+  id       String @id @default(cuid())
+  jobId    String
+  job      Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  workerId String
+  worker   User   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  message String?
+  status  ApplicationStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([jobId, workerId])
+  @@index([workerId])
+}
+
+// ---------------------------------------------------------------------------
+// Resenas y seguimiento final (trabajo terminado)
+// ---------------------------------------------------------------------------
+
+model Review {
+  id       String @id @default(cuid())
+  jobId    String @unique
+  job      Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  authorId String
+  author   User   @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  targetId String
+  target   User   @relation("ReviewTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  rating  Int
+  comment String?
+
+  createdAt DateTime @default(now())
+
+  photos ReviewPhoto[]
+
+  @@index([targetId])
+}
+
+// Fotos del trabajo terminado (minimo 1, maximo 3, convertidas a webp)
+model ReviewPhoto {
+  id        String   @id @default(cuid())
+  reviewId  String
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  url       String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([reviewId])
+}
