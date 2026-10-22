@@ -33,6 +33,9 @@ export class PublicUserDto {
   @ApiPropertyOptional({ nullable: true })
   city!: string | null;
 
+  @ApiPropertyOptional({ nullable: true })
+  address!: string | null;
+
   @ApiPropertyOptional({ nullable: true, type: Number })
   latitude!: number | null;
 
@@ -63,6 +66,7 @@ export class PublicUserDto {
       role: user.role,
       avatarUrl: user.avatarUrl,
       city: user.city,
+      address: user.address ?? null,
       latitude: user.latitude,
       longitude: user.longitude,
       isActive: user.isActive,

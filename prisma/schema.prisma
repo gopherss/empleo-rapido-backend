@@ -88,6 +88,7 @@ model User {
 
   // Ubicacion (obtenida desde el navegador via Geolocation API)
   city      String?
+  address   String?
   latitude  Float?
   longitude Float?
 

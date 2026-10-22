@@ -47,6 +47,13 @@ export class UpdateUserDto {
   @IsNotEmpty({ message: 'Ingresa tu ciudad' })
   @MaxLength(120)
   city?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(200)
+  address?: string;
 }
 
 export class UpdateLocationDto {

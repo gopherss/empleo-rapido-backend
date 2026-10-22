@@ -38,11 +38,11 @@ export class CreateJobDto {
   @MaxLength(120)
   city!: string;
 
-  @ApiPropertyOptional({ example: 'Av. Monseñor Rivero #123' })
-  @IsOptional()
+  @ApiProperty({ example: 'Av. Monseñor Rivero #123' })
   @IsString()
+  @IsNotEmpty({ message: 'Ingresa la direccion' })
   @MaxLength(200)
-  address?: string;
+  address!: string;
 
   @ApiProperty({ example: -17.7833 })
   @Type(() => Number)

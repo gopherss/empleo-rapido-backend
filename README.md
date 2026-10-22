@@ -54,13 +54,27 @@ Variables principales (`.env.example`):
 
 > En produccion usa secretos fuertes y distintos para access y refresh.
 
-### 3. Preparar la base de datos
+### 3. Crear la base de datos
+
+Con PostgreSQL instalado y corriendo, crea la base (ajusta el usuario si no es
+`postgres`):
+
+```bash
+# Crea la base (ajusta el usuario si no es "postgres")
+createdb -U postgres empleo_rapido
+```
+
+> El nombre debe coincidir con el `DATABASE_URL` de tu `.env`.
+
+### 4. Aplicar el esquema de base de datos
+
+Con PostgreSQL disponible:
 
 ```bash
 # Aplica las migraciones existentes
 npm run prisma:migrate
 
-# (Opcional) Carga datos de ejemplo
+# (Opcional) Carga datos de ejemplo (usuarios verificados, trabajos, etc.)
 npm run seed
 ```
 
@@ -68,11 +82,49 @@ Otros comandos de Prisma:
 
 ```bash
 npm run prisma:generate   # Regenera el cliente Prisma
-npm run prisma:deploy     # Aplica migraciones en produccion
+npm run prisma:deploy     # Aplica migraciones (entornos no interactivos/produccion)
 npm run prisma:studio     # Abre Prisma Studio
 ```
 
-### 4. Levantar el servidor
+#### Crear una nueva migracion
+
+Cada vez que modifiques `prisma/schema.prisma`, genera una migracion con un
+nombre descriptivo:
+
+```bash
+npx prisma migrate dev --name descripcion_del_cambio
+```
+
+Esto crea un archivo `.sql` en `prisma/migrations/`, aplica el cambio a tu base
+local y regenera el cliente. **Commitea siempre la carpeta `prisma/migrations/`**
+junto con el `schema.prisma`: es lo que permite aplicar el mismo cambio en otros
+entornos con `prisma deploy`.
+
+> `prisma migrate dev` es solo para desarrollo. Nunca lo uses en produccion
+> porque es interactivo y puede resetear la base si detecta divergencias.
+
+#### Error de "drift" / base sin historial de migraciones
+
+Si al correr `npm run prisma:migrate` Prisma avisa que hay *drift* o que la base
+no esta en sincronia con el historial de migraciones (por ejemplo, si la base se
+creo a mano o quedo vacia sin la tabla `_prisma_migrations`), resetea la base de
+desarrollo. Esto **borra todos los datos** y vuelve a aplicar todas las
+migraciones desde cero:
+
+```bash
+npx prisma migrate reset --force
+```
+
+Luego carga los datos de ejemplo:
+
+```bash
+npm run seed
+```
+
+> `prisma migrate reset` es solo para **desarrollo**. Nunca lo uses en
+> produccion: destruye todos los datos de la base.
+
+### 5. Levantar el servidor
 
 ```bash
 npm run start:dev    # desarrollo con recarga en caliente
@@ -82,6 +134,7 @@ npm run start:prod   # produccion (requiere build previo)
 
 - API: `http://localhost:3000/api`
 - Swagger: `http://localhost:3000/api/docs`
+- Health check: `http://localhost:3000/api` (devuelve un mensaje de estado)
 
 ## Scripts disponibles
 
@@ -142,6 +195,139 @@ prisma/
   migrations/    Migraciones
 test/            Pruebas
 ```
+
+## Despliegue en produccion
+
+### 1. Variables de entorno
+
+Define estas variables en el entorno del servidor de produccion (no subas el
+`.env` al repositorio):
+
+```bash
+NODE_ENV=production
+PORT=3000
+DATABASE_URL="postgresql://usuario:password@host:5432/empleo_rapido?schema=public"
+JWT_ACCESS_SECRET="<secreto-largo-y-aleatorio>"
+JWT_ACCESS_EXPIRES_IN="15m"
+JWT_REFRESH_SECRET="<otro-secreto-largo-y-aleatorio>"
+JWT_REFRESH_EXPIRES_IN="30d"
+CORS_ORIGINS="https://tu-dominio-del-frontend"
+UPLOAD_DIR="uploads"
+PUBLIC_BASE_URL="https://api.tu-dominio.com"
+```
+
+> - Genera los secretos con, por ejemplo, `openssl rand -hex 32`.
+> - `CORS_ORIGINS` debe ser el origen exacto del frontend (separados por coma si
+>   hay varios). No uses `*` con credenciales.
+> - `PUBLIC_BASE_URL` es la URL publica desde la que se sirven los archivos de
+>   `uploads`; debe ser accesible por los clientes.
+> - Asegura que `UPLOAD_DIR` apunte a un almacenamiento persistente; si se borra,
+>   se pierden las imagenes subidas.
+
+### 2. Instalar dependencias y compilar
+
+```bash
+npm ci
+npm run build
+```
+
+`npm run build` ejecuta `prisma generate` (via `prebuild`) y compila a `dist/`.
+
+### 3. Aplicar migraciones de Prisma
+
+En produccion **no** uses `prisma migrate dev` (es interactivo y puede resetear
+datos). Usa `migrate deploy`, que solo aplica las migraciones pendientes de
+`prisma/migrations/` sobre la base:
+
+```bash
+npm run prisma:deploy   # equivale a: npx prisma migrate deploy
+```
+
+Forma parte del flujo de despliegue: **ejecuta esto antes de arrancar** cada vez
+que haya cambios de esquema. Es seguro reejecutarlo (no reaplica lo ya aplicado).
+
+> - No ejecutes `npm run seed` en produccion: crea datos de ejemplo.
+> - Los archivos de `prisma/migrations/` deben estar incluidos en el despliegue
+>   (no los excluyas del build/artefacto), o `migrate deploy` no tendra nada que
+>   aplicar.
+> - Si un despliegue introduce una migracion que elimina o renombra columnas, haz
+>   backup de la base antes.
+
+### 4. Arrancar
+
+```bash
+npm run start:prod
+```
+
+Esto ejecuta `node dist/main`. Para mantener el proceso vivo usa un gestor de
+procesos o un orquestador:
+
+- **PM2**:
+
+  ```bash
+  npm install -g pm2
+  pm2 start dist/main.js --name empleo-rapido-api
+  pm2 save
+  pm2 startup
+  ```
+
+- **systemd** (servicio `empleo-rapido-api.service`):
+
+  ```ini
+  [Unit]
+  Description=EmpleoRapido API
+  After=network.target
+
+  [Service]
+  WorkingDirectory=/ruta/al/proyecto
+  ExecStart=/usr/bin/node dist/main.js
+  EnvironmentFile=/ruta/al/proyecto/.env
+  Restart=always
+
+  [Install]
+  WantedBy=multi-user.target
+  ```
+
+### 5. Proxy inverso y HTTPS
+
+Coloca la API detras de Nginx (o similar) para terminar TLS y servir los
+archivos de `uploads`:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name api.tu-dominio.com;
+
+    ssl_certificate     /ruta/cert.pem;
+    ssl_certificate_key /ruta/key.pem;
+
+    location / {
+        proxy_pass         http://127.0.0.1:3000;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+> Si servis los archivos de Nginx en vez de Express, mapea `/uploads` al
+> directorio `UPLOAD_DIR`.
+
+### 6. Base de datos en produccion
+
+- Usa un PostgreSQL gestionado (RDS, Cloud SQL, Neon, Supabase, etc.) o un
+  contenedor con volumen persistente.
+- Configura **backups automaticos** y no expongas el puerto de la base a
+  internet.
+- Ejecuta `npm run prisma:deploy` en cada despliegue con cambios de esquema.
+
+### 7. Verificacion
+
+- `GET https://api.tu-dominio.com/api` debe responder el mensaje de salud.
+- `GET https://api.tu-dominio.com/api/docs` debe mostrar Swagger.
+- Confirma desde el frontend que login, publicacion y subida de imagenes
+  funcionan contra el backend en produccion.
 
 ## Notas
 

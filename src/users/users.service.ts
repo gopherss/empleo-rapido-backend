@@ -51,6 +51,7 @@ export class UsersService {
         lastName: dto.lastName,
         phone: dto.phone,
         city: dto.city,
+        address: dto.address,
       },
       include: { workerProfile: true },
     });
