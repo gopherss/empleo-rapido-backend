@@ -184,6 +184,7 @@ export class ApplicationsService {
     };
   }
 
+
   async withdraw(
     applicationId: string,
     workerId: string,
@@ -209,6 +210,41 @@ export class ApplicationsService {
     await this.prisma.application.update({
       where: { id: applicationId },
       data: { status: ApplicationStatus.WITHDRAWN },
+    });
+
+    return { success: true };
+  }
+
+  async reject(
+    applicationId: string,
+    homeownerId: string,
+  ): Promise<{ success: boolean }> {
+    const application = await this.prisma.application.findUnique({
+      where: { id: applicationId },
+      include: { job: true },
+    });
+
+    if (!application) {
+      throw new NotFoundException('Postulacion no encontrada');
+    }
+
+    if (application.job.homeownerId !== homeownerId) {
+      throw new ForbiddenException('No eres el dueno de esta publicacion');
+    }
+
+    if (application.status === ApplicationStatus.ACCEPTED) {
+      throw new BadRequestException(
+        'No puedes rechazar una postulacion ya aceptada',
+      );
+    }
+
+    if (application.status === ApplicationStatus.WITHDRAWN) {
+      throw new BadRequestException('Esta postulacion ya fue retirada');
+    }
+
+    await this.prisma.application.update({
+      where: { id: applicationId },
+      data: { status: ApplicationStatus.REJECTED },
     });
 
     return { success: true };

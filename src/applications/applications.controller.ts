@@ -89,4 +89,15 @@ export class ApplicationsController {
   ): Promise<{ success: boolean }> {
     return this.applicationsService.withdraw(id, workerId);
   }
+
+  @Post('applications/:id/reject')
+  @Roles(Role.HOMEOWNER)
+  @ApiOperation({ summary: 'Rechazar una postulacion' })
+  @ApiOkResponse({ schema: { example: { success: true } } })
+  reject(
+    @CurrentUser('userId') homeownerId: string,
+    @Param('id') id: string,
+  ): Promise<{ success: boolean }> {
+    return this.applicationsService.reject(id, homeownerId);
+  }
 }
