@@ -9,11 +9,13 @@ import {
   ApplicationStatus,
   IdVerificationStatus,
   JobStatus,
+  NotificationType,
   Role,
 } from '../generated/prisma/enums.js';
 import { haversineKm } from '../common/utils/geo.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StorageService } from '../storage/storage.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import type { CreateJobDto } from './dto/create-job.dto.js';
 import type {
   JobDetailDto,
@@ -59,6 +61,13 @@ const detailInclude = {
       },
     },
   },
+  homeownerReview: {
+    include: {
+      author: {
+        select: { id: true, firstName: true, lastName: true, avatarUrl: true },
+      },
+    },
+  },
   applications: { select: { workerId: true, status: true } },
 } satisfies Prisma.JobInclude;
 
@@ -76,6 +85,7 @@ export class JobsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async create(
@@ -401,6 +411,113 @@ export class JobsService {
       }),
     ]);
 
+    await this.notifications.create({
+      userId: workerId,
+      type: NotificationType.APPLICATION_ACCEPTED,
+      title: 'Postulación aceptada',
+      message: `Fuiste seleccionado para "${job.title}"`,
+      link: `/jobs/${jobId}`,
+    });
+
+    return this.findOne(jobId, homeownerId, Role.HOMEOWNER);
+  }
+
+  async confirmAgreement(
+    jobId: string,
+    homeownerId: string,
+  ): Promise<JobDetailDto> {
+    const job = await this.prisma.job.findUnique({ where: { id: jobId } });
+
+    if (!job) {
+      throw new NotFoundException('Publicacion no encontrada');
+    }
+
+    if (job.homeownerId !== homeownerId) {
+      throw new ForbiddenException('No eres el dueno de esta publicacion');
+    }
+
+    if (job.status !== JobStatus.IN_PROGRESS) {
+      throw new BadRequestException('Solo se puede confirmar en trabajos en progreso');
+    }
+
+    if (!job.workerId) {
+      throw new BadRequestException('No hay trabajador asignado');
+    }
+
+    if (job.agreementConfirmedAt) {
+      throw new BadRequestException('El acuerdo ya fue confirmado');
+    }
+
+    await this.prisma.job.update({
+      where: { id: jobId },
+      data: { agreementConfirmedAt: new Date() },
+    });
+
+    const assignedWorkerId = job.workerId;
+    if (assignedWorkerId) {
+      await this.notifications.create({
+        userId: assignedWorkerId,
+        type: NotificationType.AGREEMENT_CONFIRMED,
+        title: 'Acuerdo confirmado',
+        message: `El dueño confirmó el acuerdo para "${job.title}". Ya puedes finalizar el trabajo.`,
+        link: `/jobs/${jobId}`,
+      });
+    }
+
+    return this.findOne(jobId, homeownerId, Role.HOMEOWNER);
+  }
+
+  async releaseWorker(
+    jobId: string,
+    homeownerId: string,
+  ): Promise<JobDetailDto> {
+    const job = await this.prisma.job.findUnique({ where: { id: jobId } });
+
+    if (!job) {
+      throw new NotFoundException('Publicacion no encontrada');
+    }
+
+    if (job.homeownerId !== homeownerId) {
+      throw new ForbiddenException('No eres el dueno de esta publicacion');
+    }
+
+    if (job.status !== JobStatus.IN_PROGRESS) {
+      throw new BadRequestException('Solo se puede liberar en trabajos en progreso');
+    }
+
+    if (!job.workerId) {
+      throw new BadRequestException('No hay trabajador asignado');
+    }
+
+    const workerId = job.workerId;
+
+    await this.prisma.$transaction([
+      this.prisma.job.update({
+        where: { id: jobId },
+        data: { status: JobStatus.OPEN, workerId: null, selectedAt: null },
+      }),
+      this.prisma.application.updateMany({
+        where: { jobId, workerId, status: ApplicationStatus.ACCEPTED },
+        data: { status: ApplicationStatus.PENDING },
+      }),
+      this.prisma.application.updateMany({
+        where: {
+          jobId,
+          workerId: { not: workerId },
+          status: ApplicationStatus.REJECTED,
+        },
+        data: { status: ApplicationStatus.PENDING },
+      }),
+    ]);
+
+    await this.notifications.create({
+      userId: workerId,
+      type: NotificationType.APPLICATION_REJECTED,
+      title: 'Negociación cancelada',
+      message: `No hubo acuerdo para "${job.title}". Puedes postularte a otros trabajos.`,
+      link: `/jobs/${jobId}`,
+    });
+
     return this.findOne(jobId, homeownerId, Role.HOMEOWNER);
   }
 
@@ -519,6 +636,7 @@ export class JobsService {
         : null,
       selectedAt: job.selectedAt,
       completedAt: job.completedAt,
+      agreementConfirmedAt: job.agreementConfirmedAt,
       review: job.review
         ? {
             id: job.review.id,
@@ -527,6 +645,15 @@ export class JobsService {
             createdAt: job.review.createdAt,
             author: job.review.author,
             photos: job.review.photos.map((photo) => photo.url),
+          }
+        : null,
+      homeownerReview: job.homeownerReview
+        ? {
+            id: job.homeownerReview.id,
+            rating: job.homeownerReview.rating,
+            comment: job.homeownerReview.comment,
+            createdAt: job.homeownerReview.createdAt,
+            author: job.homeownerReview.author,
           }
         : null,
       myApplicationStatus: myApplication?.status ?? null,

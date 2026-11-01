@@ -15,8 +15,8 @@ import type {
 } from '../generated/prisma/models.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { AuthResponseDto } from './dto/auth-response.dto.js';
-import type { LoginDto } from './dto/login.dto.js';
 import { PublicUserDto } from '../common/dto/public-user.dto.js';
+import type { LoginDto } from './dto/login.dto.js';
 import type { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import type { RegisterDto } from './dto/register.dto.js';
 import type { AuthTokens } from './interfaces/auth-tokens.interface.js';

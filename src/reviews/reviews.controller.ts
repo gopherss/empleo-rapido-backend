@@ -20,7 +20,10 @@ import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import { Roles } from '../common/decorators/roles.decorator.js';
 import { photoUploadInterceptor } from '../common/upload/image-upload.js';
 import { Role } from '../generated/prisma/enums.js';
-import { CreateReviewDto, ReviewDto } from './dto/review.dto.js';
+import {
+  CreateReviewDto,
+  ReviewDto,
+} from './dto/review.dto.js';
 import { ReviewsService } from './reviews.service.js';
 
 const MAX_REVIEW_PHOTOS = 3;
@@ -71,5 +74,27 @@ export class ReviewsController {
     @Param('workerId') workerId: string,
   ): Promise<ReviewDto[]> {
     return this.reviewsService.listByWorker(workerId);
+  }
+
+  @Post('jobs/:jobId/review-homeowner')
+  @Roles(Role.WORKER)
+  @ApiOperation({ summary: 'Calificar al dueno al finalizar el trabajo' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        rating: { type: 'integer', minimum: 1, maximum: 5 },
+        comment: { type: 'string' },
+      },
+      required: ['rating'],
+    },
+  })
+  @ApiCreatedResponse({ type: ReviewDto })
+  createHomeownerReview(
+    @CurrentUser('userId') workerId: string,
+    @Param('jobId') jobId: string,
+    @Body() dto: CreateReviewDto,
+  ): Promise<ReviewDto> {
+    return this.reviewsService.createHomeownerReview(jobId, workerId, dto);
   }
 }

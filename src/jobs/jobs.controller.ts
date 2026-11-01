@@ -155,6 +155,28 @@ export class JobsController {
     return this.jobsService.selectWorker(id, homeownerId, workerId);
   }
 
+  @Post(':id/confirm-agreement')
+  @Roles(Role.HOMEOWNER)
+  @ApiOperation({ summary: 'Confirmar acuerdo entre ambas partes' })
+  @ApiOkResponse({ type: JobDetailDto })
+  confirmAgreement(
+    @CurrentUser('userId') homeownerId: string,
+    @Param('id') id: string,
+  ): Promise<JobDetailDto> {
+    return this.jobsService.confirmAgreement(id, homeownerId);
+  }
+
+  @Post(':id/release')
+  @Roles(Role.HOMEOWNER)
+  @ApiOperation({ summary: 'No hubo acuerdo - volver a disponible' })
+  @ApiOkResponse({ type: JobDetailDto })
+  releaseWorker(
+    @CurrentUser('userId') homeownerId: string,
+    @Param('id') id: string,
+  ): Promise<JobDetailDto> {
+    return this.jobsService.releaseWorker(id, homeownerId);
+  }
+
   @Post(':id/cancel')
   @Roles(Role.HOMEOWNER)
   @ApiOperation({ summary: 'Cancelar una publicacion' })

@@ -112,10 +112,37 @@ model User {
   applications    Application[]
   reviewsWritten  Review[]        @relation("ReviewAuthor")
   reviewsReceived Review[]        @relation("ReviewTarget")
+  homeownerReviewsWritten  HomeownerReview[] @relation("HomeownerReviewAuthor")
+  homeownerReviewsReceived HomeownerReview[] @relation("HomeownerReviewTarget")
   refreshTokens   RefreshToken[]
+  notifications   Notification[]
 
   @@index([role])
   @@index([city])
+}
+
+enum NotificationType {
+  APPLICATION_RECEIVED
+  APPLICATION_ACCEPTED
+  APPLICATION_REJECTED
+  JOB_COMPLETED
+  AGREEMENT_CONFIRMED
+  NEW_MESSAGE
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  link      String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, read])
+  @@index([createdAt])
 }
 
 model RefreshToken {
@@ -182,6 +209,7 @@ model Job {
   status      JobStatus @default(OPEN)
   selectedAt  DateTime?
   completedAt DateTime?
+  agreementConfirmedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -189,6 +217,7 @@ model Job {
   photos       JobPhoto[]
   applications Application[]
   review       Review?
+  homeownerReview HomeownerReview? @relation("HomeownerReview")
 
   @@index([status, city])
   @@index([homeownerId])
@@ -247,6 +276,24 @@ model Review {
   createdAt DateTime @default(now())
 
   photos ReviewPhoto[]
+
+  @@index([targetId])
+}
+
+// Calificacion del trabajador hacia el dueno de casa (bidireccional).
+model HomeownerReview {
+  id       String @id @default(cuid())
+  jobId    String @unique
+  job      Job    @relation("HomeownerReview", fields: [jobId], references: [id], onDelete: Cascade)
+  authorId String
+  author   User   @relation("HomeownerReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  targetId String
+  target   User   @relation("HomeownerReviewTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  rating  Int
+  comment String?
+
+  createdAt DateTime @default(now())
 
   @@index([targetId])
 }

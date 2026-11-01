@@ -10,9 +10,11 @@ import {
   ApplicationStatus,
   IdVerificationStatus,
   JobStatus,
+  NotificationType,
 } from '../generated/prisma/enums.js';
 import { haversineKm } from '../common/utils/geo.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import type {
   ApplicantDto,
   MyApplicationPageDto,
@@ -41,7 +43,10 @@ type ApplicationWithWorker = Prisma.ApplicationGetPayload<{
 
 @Injectable()
 export class ApplicationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async apply(
     jobId: string,
@@ -84,6 +89,16 @@ export class ApplicationsService {
       data: { jobId, workerId, message },
       include: applicantInclude,
     });
+
+    if (job.homeownerId) {
+      await this.notifications.create({
+        userId: job.homeownerId,
+        type: NotificationType.APPLICATION_RECEIVED,
+        title: 'Nueva postulación',
+        message: `Recibiste una postulación a "${job.title}"`,
+        link: `/jobs/${jobId}`,
+      });
+    }
 
     return this.toApplicant(application, job.latitude, job.longitude);
   }

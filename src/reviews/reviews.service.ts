@@ -5,10 +5,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { JobStatus, Role } from '../generated/prisma/enums.js';
+import { JobStatus, NotificationType, Role } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StorageService } from '../storage/storage.service.js';
-import type { CreateReviewDto, ReviewDto } from './dto/review.dto.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
+import type {
+  CreateReviewDto,
+  ReviewDto,
+} from './dto/review.dto.js';
 
 const MAX_REVIEW_PHOTOS = 3;
 const MIN_REVIEW_PHOTOS = 1;
@@ -18,6 +22,7 @@ export class ReviewsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async create(
@@ -50,6 +55,10 @@ export class ReviewsService {
 
     if (!job.workerId) {
       throw new BadRequestException('La publicacion no tiene trabajador asignado');
+    }
+
+    if (!job.agreementConfirmedAt) {
+      throw new BadRequestException('Debes confirmar el acuerdo antes de finalizar');
     }
 
     const urls = await this.storage.saveWebpImages(files, {
@@ -117,7 +126,83 @@ export class ReviewsService {
       return created;
     });
 
+    await this.notifications.create({
+      userId: workerId,
+      type: NotificationType.JOB_COMPLETED,
+      title: 'Trabajo calificado',
+      message: `Recibiste una calificación por "${job.title}"`,
+      link: `/workers/${workerId}`,
+    });
+
     return this.toReview(review);
+  }
+
+  async createHomeownerReview(
+    jobId: string,
+    workerId: string,
+    dto: CreateReviewDto,
+  ): Promise<ReviewDto> {
+    const job = await this.prisma.job.findUnique({ where: { id: jobId } });
+
+    if (!job) {
+      throw new NotFoundException('Publicacion no encontrada');
+    }
+
+    if (job.workerId !== workerId) {
+      throw new ForbiddenException('No eres el trabajador de esta publicacion');
+    }
+
+    if (job.status !== JobStatus.COMPLETED) {
+      throw new BadRequestException(
+        'Solo puedes calificar al dueno cuando el trabajo esta finalizado',
+      );
+    }
+
+    const existing = await this.prisma.homeownerReview.findUnique({
+      where: { jobId },
+    });
+
+    if (existing) {
+      throw new ConflictException('Ya calificaste a este dueno');
+    }
+
+    const created = await this.prisma.homeownerReview.create({
+      data: {
+        jobId,
+        authorId: workerId,
+        targetId: job.homeownerId,
+        rating: dto.rating,
+        comment: dto.comment,
+      },
+      include: {
+        author: {
+          select: { id: true, firstName: true, lastName: true, avatarUrl: true },
+        },
+        job: {
+          select: { id: true, title: true, category: true, city: true },
+        },
+      },
+    });
+
+    await this.notifications.create({
+      userId: job.homeownerId,
+      type: NotificationType.JOB_COMPLETED,
+      title: 'Recibiste una calificacion',
+      message: `El trabajador te califico por "${job.title}"`,
+      link: `/jobs/${jobId}`,
+    });
+
+    return {
+      id: created.id,
+      rating: created.rating,
+      comment: created.comment,
+      createdAt: created.createdAt,
+      photos: [],
+      workerId: created.targetId,
+      jobId: created.jobId,
+      author: created.author,
+      job: created.job,
+    };
   }
 
   async listByWorker(workerId: string): Promise<ReviewDto[]> {

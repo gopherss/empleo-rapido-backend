@@ -100,8 +100,14 @@ export class JobDetailDto extends JobListItemDto {
   @ApiPropertyOptional({ nullable: true })
   completedAt?: Date | null;
 
+  @ApiPropertyOptional({ nullable: true })
+  agreementConfirmedAt?: Date | null;
+
   @ApiPropertyOptional({ type: Object, nullable: true })
   review?: unknown;
+
+  @ApiPropertyOptional({ type: Object, nullable: true })
+  homeownerReview?: unknown;
 
   @ApiPropertyOptional({
     enum: ApplicationStatus,
