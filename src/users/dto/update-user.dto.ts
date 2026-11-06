@@ -1,6 +1,7 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
+  IsEmail,
   IsLatitude,
   IsLongitude,
   IsNotEmpty,
@@ -8,6 +9,7 @@ import {
   IsString,
   Matches,
   MaxLength,
+  MinLength,
 } from 'class-validator';
 
 const PHONE_REGEX = /^\+?[0-9\s()-]{6,20}$/;
@@ -16,6 +18,13 @@ const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim() : value;
 
 export class UpdateUserDto {
+  @ApiPropertyOptional({ example: 'juan@correo.com' })
+  @IsOptional()
+  @Transform(trim)
+  @IsEmail({}, { message: 'El correo no es valido' })
+  @MaxLength(254)
+  email?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(trim)
@@ -54,6 +63,14 @@ export class UpdateUserDto {
   @IsString()
   @MaxLength(200)
   address?: string;
+}
+
+export class UpdatePasswordDto {
+  @ApiProperty({ minLength: 8, example: 'nuevoSecreto123' })
+  @IsString()
+  @MinLength(8, { message: 'La contrasena debe tener al menos 8 caracteres' })
+  @MaxLength(72)
+  password!: string;
 }
 
 export class UpdateLocationDto {

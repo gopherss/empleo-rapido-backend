@@ -69,6 +69,12 @@ export class JobListItemDto {
   @ApiPropertyOptional({ nullable: true, type: Number })
   distanceKm!: number | null;
 
+  @ApiPropertyOptional({ nullable: true, type: Number })
+  homeownerRating?: number | null;
+
+  @ApiPropertyOptional({ type: Number })
+  homeownerReviewCount?: number;
+
   @ApiProperty()
   applicationCount!: number;
 

@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "NotificationType" ADD VALUE 'APPLICATION_WITHDRAWN';
+ALTER TYPE "NotificationType" ADD VALUE 'JOB_CANCELLED';

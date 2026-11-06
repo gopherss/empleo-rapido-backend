@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { WorkCategory, Currency } from '../../generated/prisma/enums.js';
+import { WorkCategory, Currency, IdVerificationStatus } from '../../generated/prisma/enums.js';
 
 export class WorkerCvDto {
   @ApiProperty()
@@ -16,6 +16,9 @@ export class WorkerCvDto {
 
   @ApiPropertyOptional({ nullable: true })
   city!: string | null;
+
+  @ApiProperty({ enum: IdVerificationStatus })
+  idVerificationStatus!: IdVerificationStatus;
 
   @ApiPropertyOptional({ nullable: true, description: 'WhatsApp' })
   phone!: string | null;

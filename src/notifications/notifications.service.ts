@@ -63,4 +63,11 @@ export class NotificationsService {
     });
     return { success: true };
   }
+
+  async remove(userId: string, id: string) {
+    await this.prisma.notification.deleteMany({
+      where: { id, userId },
+    });
+    return { success: true };
+  }
 }

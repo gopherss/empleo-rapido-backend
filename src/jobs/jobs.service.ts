@@ -78,6 +78,7 @@ interface MapContext {
   userId: string;
   latitude?: number | null;
   longitude?: number | null;
+  ownerRatings?: Map<string, { average: number; count: number }>;
 }
 
 @Injectable()
@@ -144,7 +145,10 @@ export class JobsService {
     const latitude = query.latitude ?? worker?.latitude ?? undefined;
     const longitude = query.longitude ?? worker?.longitude ?? undefined;
 
-    const where: Prisma.JobWhereInput = { status: JobStatus.OPEN };
+    const where: Prisma.JobWhereInput = {
+      status: JobStatus.OPEN,
+      homeowner: { isActive: true },
+    };
 
     if (city) {
       where.city = { equals: city, mode: 'insensitive' };
@@ -168,7 +172,14 @@ export class JobsService {
       take: 500,
     });
 
-    const context: MapContext = { userId, latitude, longitude };
+    const context: MapContext = {
+      userId,
+      latitude,
+      longitude,
+      ownerRatings: await this.loadOwnerRatings(
+        jobs.map((job) => job.homeownerId),
+      ),
+    };
     const items = jobs.map((job) => this.toListItem(job, context));
 
     const hasCoords = latitude !== undefined && longitude !== undefined;
@@ -253,6 +264,7 @@ export class JobsService {
       userId,
       latitude: user?.latitude,
       longitude: user?.longitude,
+      ownerRatings: await this.loadOwnerRatings([job.homeownerId]),
     });
   }
 
@@ -320,6 +332,35 @@ export class JobsService {
       where: { id: jobId },
       data: { status: JobStatus.CANCELLED },
     });
+
+    const applicants = await this.prisma.application.findMany({
+      where: {
+        jobId,
+        status: ApplicationStatus.PENDING,
+        ...(job.workerId ? { workerId: { not: job.workerId } } : {}),
+      },
+      select: { workerId: true },
+    });
+
+    const recipients = new Set(
+      applicants.map((application) => application.workerId),
+    );
+
+    if (job.workerId) {
+      recipients.add(job.workerId);
+    }
+
+    await Promise.all(
+      [...recipients].map((recipientId) =>
+        this.notifications.create({
+          userId: recipientId,
+          type: NotificationType.JOB_CANCELLED,
+          title: 'Trabajo cancelado',
+          message: `El dueño canceló la publicación "${job.title}"`,
+          link: `/jobs/${jobId}`,
+        }),
+      ),
+    );
 
     return this.findOne(jobId, homeownerId, Role.HOMEOWNER);
   }
@@ -562,7 +603,37 @@ export class JobsService {
     );
   }
 
+  private async loadOwnerRatings(
+    homeownerIds: string[],
+  ): Promise<Map<string, { average: number; count: number }>> {
+    const unique = [...new Set(homeownerIds)];
+
+    if (unique.length === 0) {
+      return new Map();
+    }
+
+    const groups = await this.prisma.homeownerReview.groupBy({
+      by: ['targetId'],
+      where: { targetId: { in: unique } },
+      _avg: { rating: true },
+      _count: { _all: true },
+    });
+
+    const ratings = new Map<string, { average: number; count: number }>();
+
+    for (const group of groups) {
+      ratings.set(group.targetId, {
+        average: group._avg.rating ?? 0,
+        count: group._count._all,
+      });
+    }
+
+    return ratings;
+  }
+
   private toListItem(job: JobListModel, context: MapContext): JobListItemDto {
+    const ownerRating = context.ownerRatings?.get(job.homeownerId);
+
     return {
       id: job.id,
       title: job.title,
@@ -578,6 +649,9 @@ export class JobsService {
       photo: job.photos[0]?.url ?? null,
       photoCount: job.photos.length,
       distanceKm: this.distance(context, job.latitude, job.longitude),
+      homeownerRating:
+        ownerRating && ownerRating.count > 0 ? ownerRating.average : null,
+      homeownerReviewCount: ownerRating?.count ?? 0,
       applicationCount: job._count.applications,
       pendingApplicationCount: job.applications.filter(
         (a) => a.status === ApplicationStatus.PENDING,
@@ -591,6 +665,7 @@ export class JobsService {
     const myApplication = job.applications.find(
       (a) => a.workerId === context.userId,
     );
+    const ownerRating = context.ownerRatings?.get(job.homeownerId);
 
     const canSeeHomeownerContact =
       job.homeowner.id === context.userId ||
@@ -611,6 +686,9 @@ export class JobsService {
       photo: job.photos[0]?.url ?? null,
       photoCount: job.photos.length,
       distanceKm: this.distance(context, job.latitude, job.longitude),
+      homeownerRating:
+        ownerRating && ownerRating.count > 0 ? ownerRating.average : null,
+      homeownerReviewCount: ownerRating?.count ?? 0,
       applicationCount: job.applications.length,
       pendingApplicationCount: job.applications.filter(
         (a) => a.status === ApplicationStatus.PENDING,

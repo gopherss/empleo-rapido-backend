@@ -32,6 +32,7 @@ const applicantInclude = {
       city: true,
       latitude: true,
       longitude: true,
+      idVerificationStatus: true,
       workerProfile: true,
     },
   },
@@ -206,6 +207,7 @@ export class ApplicationsService {
   ): Promise<{ success: boolean }> {
     const application = await this.prisma.application.findUnique({
       where: { id: applicationId },
+      include: { job: { select: { title: true, homeownerId: true } } },
     });
 
     if (!application) {
@@ -226,6 +228,16 @@ export class ApplicationsService {
       where: { id: applicationId },
       data: { status: ApplicationStatus.WITHDRAWN },
     });
+
+    if (application.status === ApplicationStatus.PENDING) {
+      await this.notifications.create({
+        userId: application.job.homeownerId,
+        type: NotificationType.APPLICATION_WITHDRAWN,
+        title: 'Postulación retirada',
+        message: `Un trabajador retiró su postulación a "${application.job.title}"`,
+        link: `/jobs/${application.jobId}`,
+      });
+    }
 
     return { success: true };
   }
@@ -262,6 +274,16 @@ export class ApplicationsService {
       data: { status: ApplicationStatus.REJECTED },
     });
 
+    if (application.status === ApplicationStatus.PENDING) {
+      await this.notifications.create({
+        userId: application.workerId,
+        type: NotificationType.APPLICATION_REJECTED,
+        title: 'Postulación rechazada',
+        message: `El dueño rechazó tu postulación a "${application.job.title}"`,
+        link: `/jobs/${application.jobId}`,
+      });
+    }
+
     return { success: true };
   }
 
@@ -294,6 +316,7 @@ export class ApplicationsService {
       avatarUrl: worker.avatarUrl,
       phone: worker.phone,
       city: worker.city,
+      idVerificationStatus: worker.idVerificationStatus,
       headline: profile?.headline ?? null,
       bio: profile?.bio ?? null,
       categories: profile?.categories ?? [],

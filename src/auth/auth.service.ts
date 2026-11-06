@@ -14,10 +14,8 @@ import type {
   WorkerProfileModel,
 } from '../generated/prisma/models.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import type { AuthResponseDto } from './dto/auth-response.dto.js';
 import { PublicUserDto } from '../common/dto/public-user.dto.js';
 import type { LoginDto } from './dto/login.dto.js';
-import type { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import type { RegisterDto } from './dto/register.dto.js';
 import type { AuthTokens } from './interfaces/auth-tokens.interface.js';
 import type { JwtPayload } from './interfaces/jwt-payload.interface.js';
@@ -25,6 +23,14 @@ import type { JwtPayload } from './interfaces/jwt-payload.interface.js';
 type UserWithProfile = UserModel & {
   workerProfile?: WorkerProfileModel | null;
 };
+
+export interface AuthSession {
+  user: PublicUserDto;
+  accessToken: string;
+  refreshToken: string;
+  accessTokenExpiresIn: number;
+  refreshTokenExpiresIn: number;
+}
 
 const BCRYPT_ROUNDS = 10;
 
@@ -36,7 +42,7 @@ export class AuthService {
     private readonly config: ConfigService,
   ) {}
 
-  async register(dto: RegisterDto): Promise<AuthResponseDto> {
+  async register(dto: RegisterDto): Promise<AuthSession> {
     const email = dto.email.trim().toLowerCase();
 
     const existing = await this.prisma.user.findUnique({ where: { email } });
@@ -63,10 +69,10 @@ export class AuthService {
     });
 
     const tokens = await this.issueTokens(user);
-    return this.buildResponse(user, tokens);
+    return this.toSession(user, tokens);
   }
 
-  async login(dto: LoginDto): Promise<AuthResponseDto> {
+  async login(dto: LoginDto): Promise<AuthSession> {
     const email = dto.email.trim().toLowerCase();
 
     const user = await this.prisma.user.findUnique({
@@ -84,20 +90,20 @@ export class AuthService {
     }
 
     const tokens = await this.issueTokens(user);
-    return this.buildResponse(user, tokens);
+    return this.toSession(user, tokens);
   }
 
-  async refresh(dto: RefreshTokenDto): Promise<AuthResponseDto> {
+  async refresh(refreshToken: string): Promise<AuthSession> {
     let payload: JwtPayload;
     try {
-      payload = await this.jwt.verifyAsync<JwtPayload>(dto.refreshToken, {
+      payload = await this.jwt.verifyAsync<JwtPayload>(refreshToken, {
         secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
       });
     } catch {
       throw new UnauthorizedException('Refresh token invalido o expirado');
     }
 
-    const tokenHash = this.hashToken(dto.refreshToken);
+    const tokenHash = this.hashToken(refreshToken);
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash },
     });
@@ -127,11 +133,11 @@ export class AuthService {
     });
 
     const tokens = await this.issueTokens(user);
-    return this.buildResponse(user, tokens);
+    return this.toSession(user, tokens);
   }
 
-  async logout(dto: RefreshTokenDto): Promise<{ success: boolean }> {
-    const tokenHash = this.hashToken(dto.refreshToken);
+  async logout(refreshToken: string): Promise<{ success: boolean }> {
+    const tokenHash = this.hashToken(refreshToken);
 
     await this.prisma.refreshToken.updateMany({
       where: { tokenHash, revokedAt: null },
@@ -198,10 +204,7 @@ export class AuthService {
     };
   }
 
-  private buildResponse(
-    user: UserWithProfile,
-    tokens: AuthTokens,
-  ): AuthResponseDto {
+  private toSession(user: UserWithProfile, tokens: AuthTokens): AuthSession {
     return {
       user: PublicUserDto.fromUser(user),
       ...tokens,

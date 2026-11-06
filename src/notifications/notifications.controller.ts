@@ -1,4 +1,11 @@
-import { Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import { NotificationsService } from './notifications.service.js';
@@ -27,5 +34,11 @@ export class NotificationsController {
   @ApiOperation({ summary: 'Marcar todas como leidas' })
   markAllRead(@CurrentUser('userId') userId: string) {
     return this.notificationsService.markAllRead(userId);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Eliminar notificacion' })
+  remove(@CurrentUser('userId') userId: string, @Param('id') id: string) {
+    return this.notificationsService.remove(userId, id);
   }
 }

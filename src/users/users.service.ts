@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { hash } from 'bcryptjs';
 import { Role, Currency } from '../generated/prisma/enums.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { PublicUserDto } from '../common/dto/public-user.dto.js';
@@ -6,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { StorageService } from '../storage/storage.service.js';
 import type {
   UpdateLocationDto,
+  UpdatePasswordDto,
   UpdateUserDto,
 } from './dto/update-user.dto.js';
 import type { UpdateWorkerProfileDto } from './dto/update-worker-profile.dto.js';
@@ -44,9 +51,22 @@ export class UsersService {
   ) {}
 
   async updateMe(userId: string, dto: UpdateUserDto): Promise<PublicUserDto> {
+    const email = dto.email?.trim().toLowerCase();
+
+    if (email) {
+      const existing = await this.prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (existing && existing.id !== userId) {
+        throw new ConflictException('El correo ya esta registrado');
+      }
+    }
+
     const user = await this.prisma.user.update({
       where: { id: userId },
       data: {
+        ...(email ? { email } : {}),
         firstName: dto.firstName,
         lastName: dto.lastName,
         phone: dto.phone,
@@ -57,6 +77,18 @@ export class UsersService {
     });
 
     return PublicUserDto.fromUser(user);
+  }
+
+  async updatePassword(
+    userId: string,
+    dto: UpdatePasswordDto,
+  ): Promise<{ success: boolean }> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: await hash(dto.password, 10) },
+    });
+
+    return { success: true };
   }
 
   async uploadAvatar(
@@ -152,7 +184,7 @@ export class UsersService {
 
   private async findWorkerWithCv(userId: string): Promise<UserWithCv> {
     const user = await this.prisma.user.findFirst({
-      where: { id: userId, role: Role.WORKER },
+      where: { id: userId, role: Role.WORKER, isActive: true },
       include: cvInclude,
     });
 
@@ -173,6 +205,7 @@ export class UsersService {
       avatarUrl: user.avatarUrl,
       city: user.city,
       phone: user.phone,
+      idVerificationStatus: user.idVerificationStatus,
       headline: profile?.headline ?? null,
       bio: profile?.bio ?? null,
       categories: profile?.categories ?? [],

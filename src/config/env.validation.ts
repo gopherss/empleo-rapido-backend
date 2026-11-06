@@ -61,6 +61,10 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   PUBLIC_BASE_URL = 'http://localhost:3000';
+
+  @IsString()
+  @IsOptional()
+  COOKIE_SECURE = '';
 }
 
 export function validateEnv(

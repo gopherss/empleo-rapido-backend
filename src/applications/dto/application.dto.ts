@@ -6,6 +6,7 @@ import {
 } from 'class-validator';
 import {
   ApplicationStatus,
+  IdVerificationStatus,
   WorkCategory,
 } from '../../generated/prisma/enums.js';
 
@@ -25,6 +26,9 @@ export class ApplicantDto {
 
   @ApiProperty({ enum: ApplicationStatus })
   status!: ApplicationStatus;
+
+  @ApiProperty({ enum: IdVerificationStatus })
+  idVerificationStatus!: IdVerificationStatus;
 
   @ApiPropertyOptional({ nullable: true })
   message!: string | null;

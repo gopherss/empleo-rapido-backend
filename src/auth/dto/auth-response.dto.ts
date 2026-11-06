@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { PublicUserDto } from '../../common/dto/public-user.dto.js';
 
+// El refresh token viaja solo en la cookie HttpOnly: no se expone en el JSON.
 export class AuthResponseDto {
   @ApiProperty({ type: PublicUserDto })
   user!: PublicUserDto;
@@ -8,12 +9,6 @@ export class AuthResponseDto {
   @ApiProperty()
   accessToken!: string;
 
-  @ApiProperty()
-  refreshToken!: string;
-
   @ApiProperty({ description: 'Vigencia del access token en segundos' })
   accessTokenExpiresIn!: number;
-
-  @ApiProperty({ description: 'Vigencia del refresh token en segundos' })
-  refreshTokenExpiresIn!: number;
 }

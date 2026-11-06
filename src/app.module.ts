@@ -15,6 +15,7 @@ import { ApplicationsModule } from './applications/applications.module.js';
 import { ReviewsModule } from './reviews/reviews.module.js';
 import { IdentityModule } from './identity/identity.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
+import { AdminModule } from './admin/admin.module.js';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { NotificationsModule } from './notifications/notifications.module.js';
     ReviewsModule,
     IdentityModule,
     NotificationsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [

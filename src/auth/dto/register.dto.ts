@@ -42,8 +42,10 @@ export class RegisterDto {
   @IsNotEmpty({ message: 'Ingresa tu apellido' })
   lastName!: string;
 
-  @ApiProperty({ enum: Role, example: Role.WORKER })
-  @IsEnum(Role, { message: 'El rol debe ser WORKER o HOMEOWNER' })
+  @ApiProperty({ enum: [Role.WORKER, Role.HOMEOWNER], example: Role.WORKER })
+  @IsEnum({ WORKER: Role.WORKER, HOMEOWNER: Role.HOMEOWNER } as const, {
+    message: 'El rol debe ser WORKER o HOMEOWNER',
+  })
   role!: Role;
 
   @ApiProperty({ example: '+59170000000' })

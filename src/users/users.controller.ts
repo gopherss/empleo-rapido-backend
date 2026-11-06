@@ -22,6 +22,7 @@ import {
 import { PublicUserDto } from '../common/dto/public-user.dto.js';
 import {
   UpdateLocationDto,
+  UpdatePasswordDto,
   UpdateUserDto,
 } from './dto/update-user.dto.js';
 import { UsersService } from './users.service.js';
@@ -44,6 +45,15 @@ export class UsersController {
     @Body() dto: UpdateUserDto,
   ): Promise<PublicUserDto> {
     return this.usersService.updateMe(userId, dto);
+  }
+
+  @Patch('me/password')
+  @ApiOkResponse({ schema: { example: { success: true } } })
+  updatePassword(
+    @CurrentUser('userId') userId: string,
+    @Body() dto: UpdatePasswordDto,
+  ): Promise<{ success: boolean }> {
+    return this.usersService.updatePassword(userId, dto);
   }
 
   @Post('me/avatar')
